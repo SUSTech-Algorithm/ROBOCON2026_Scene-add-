@@ -1,0 +1,15 @@
+Wed Jan  7 16:52:12 2026
+WARNING: File size over 2GB is not supported. File: '/home/yxm/ROBOCON2026_Scene/models/robots/costume_R2'
+
+Thu Jan  8 16:15:26 2026
+WARNING: File size over 2GB is not supported. File: '/home/yxm/ROBOCON2026_Scene/models/robots/costume_R2'
+
+Fri Jan  9 16:05:10 2026
+ERROR: could not create window
+
+Fri Jan  9 22:54:06 2026
+ERROR: could not create window
+
+Sat Jan 10 14:47:35 2026
+ERROR: could not create window
+

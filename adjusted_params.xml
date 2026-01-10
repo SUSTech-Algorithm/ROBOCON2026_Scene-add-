@@ -1,0 +1,20 @@
+
+
+<geom class="visual" mesh="LF_wheel_link_vis" material="wheel_material"
+      euler="0.5600 0.7100 0.1200"
+      pos="0.0000 0.0040 -0.0070" />
+
+
+<geom class="visual" mesh="LR_wheel_link_vis" material="wheel_material"
+      euler="0.0000 2.2300 0.0300"
+      pos="0.0000 -0.0010 0.0110" />
+
+
+<geom class="visual" mesh="RF_wheel_link_vis" material="wheel_material"
+      euler="0.0000 2.4000 -0.0000"
+      pos="0.0000 0.0000 0.0340" />
+
+
+<geom class="visual" mesh="RR_wheel_link_vis" material="wheel_material"
+      euler="0.0000 0.7500 0.0100"
+      pos="0.0000 0.0010 0.0300" />
