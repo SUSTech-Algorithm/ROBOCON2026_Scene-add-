@@ -3,3 +3,7 @@ __pycache__/
 **/build/**
 **/install/**
 **/log/**
+MJDATA.TXT
+mjmodel.mjb
+.gitignore
+MJMODEL.TXT
