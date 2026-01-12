@@ -93,9 +93,9 @@
           <geom name="LF_yaw_geom_collision" class="collision" mesh="LF_yaw_link_col" />
           <joint name="LF_yaw_joint" type="hinge" axis="0 0 1" limited="true" range="-3.14 3.14" armature="0.001" damping="0.5" />
 
-          <body name="LF_wheel_link" pos="-0.0098995 -0.0098995 -0.0465" euler="1.57 0 0">
+          <body name="LF_wheel_link" pos="-0.0098995 -0.0098995 -0.0465" euler="1.57 -0.785 0">
             <inertial pos="0 0 -0.010192" mass="0.2" diaginertia="0.0001 0.0001 0.0001" />
-            <geom name="LF_wheel_geom_visual" class="visual" mesh="LF_wheel_link_vis" material="wheel_material" euler="0 0 0"/>
+            <geom name="LF_wheel_geom_visual" class="visual" mesh="LF_wheel_link_vis" material="wheel_material"/>
             <geom name="LF_wheel_geom_collision" class="collision" size="0.05" type="sphere"/>
             <joint name="LF_wheel_joint" type="hinge" axis="0 0 1" armature="0.001" damping="0.05" />
           </body>
@@ -112,9 +112,9 @@
           <geom name="LR_yaw_geom_collision" class="collision" mesh="LR_yaw_link_col" />
           <joint name="LR_yaw_joint" type="hinge" axis="0 0 1" limited="true" range="-3.14 3.14" armature="0.001" damping="0.5" />
 
-          <body name="LR_wheel_link" pos="0.0098995 -0.0098995 -0.0465" euler="1.57 0 0">
+          <body name="LR_wheel_link" pos="0.0098995 -0.0098995 -0.0465" euler="1.57 0.785 0">
             <inertial pos="0 0 -0.010192" mass="0.2" diaginertia="0.0001 0.0001 0.0001" />
-            <geom name="LR_wheel_geom_visual" class="visual" mesh="LR_wheel_link_vis" material="wheel_material" euler="0 0 0"/>
+            <geom name="LR_wheel_geom_visual" class="visual" mesh="LR_wheel_link_vis" material="wheel_material"/>
             <geom name="LR_wheel_geom_collision" class="collision" size="0.05" type="sphere"/>
             <joint name="LR_wheel_joint" type="hinge" axis="0 0 1" armature="0.001" damping="0.05" />
           </body>
@@ -131,9 +131,9 @@
           <geom name="RF_yaw_geom_collision" class="collision" mesh="RF_yaw_link_col" />
           <joint name="RF_yaw_joint" type="hinge" axis="0 0 1" limited="true" range="-3.14 3.14" armature="0.001" damping="0.5" />
 
-          <body name="RF_wheel_link" pos="-0.0098995 0.0098995 -0.0465" euler="1.57 0 0">
+          <body name="RF_wheel_link" pos="-0.0098995 0.0098995 -0.0465" euler="1.57 3.925 0">
             <inertial pos="0 0 -0.010192" mass="0.2" diaginertia="0.0001 0.0001 0.0001" />
-            <geom name="RF_wheel_geom_visual" class="visual" mesh="RF_wheel_link_vis" material="wheel_material" euler="0 0 0"/>
+            <geom name="RF_wheel_geom_visual" class="visual" mesh="RF_wheel_link_vis" material="wheel_material"/>
             <geom name="RF_wheel_geom_collision" class="collision" size="0.05" type="sphere"/>
             <joint name="RF_wheel_joint" type="hinge" axis="0 0 1" armature="0.001" damping="0.05" />
           </body>
@@ -150,9 +150,9 @@
           <geom name="RR_yaw_geom_collision" class="collision" mesh="RR_yaw_link_col" />
           <joint name="RR_yaw_joint" type="hinge" axis="0 0 1" limited="true" range="-3.14 3.14" armature="0.001" damping="0.5" />
 
-          <body name="RR_wheel_link" pos="0.0098995 0.0098995 -0.0465" euler="1.57 0 0">
+          <body name="RR_wheel_link" pos="0.0098995 0.0098995 -0.0465" euler="1.57 -3.925 0">
             <inertial pos="0 0 -0.010192" mass="0.2" diaginertia="0.0001 0.0001 0.0001" />
-            <geom name="RR_wheel_geom_visual" class="visual" mesh="RR_wheel_link_vis" material="wheel_material" euler="0 0 0"/>
+            <geom name="RR_wheel_geom_visual" class="visual" mesh="RR_wheel_link_vis" material="wheel_material"/>
             <geom name="RR_wheel_geom_collision" class="collision" size="0.05" type="sphere"/>
             <joint name="RR_wheel_joint" type="hinge" axis="0 0 1" armature="0.001" damping="0.05" />
           </body>
