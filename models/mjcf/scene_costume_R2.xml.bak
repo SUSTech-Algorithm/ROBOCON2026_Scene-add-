@@ -1,0 +1,16 @@
+<mujoco>
+  <!-- Include the costume R2 robot -->
+  <include file="../robots/costume_R2/costume_R2.xml"/>
+  <include file="robocon2026.xml"/>
+
+  <!-- Initial robot positions -->
+  <keyframe>
+    <key name="home_R2_blue"
+      qpos="-5.2 1.4 0.5 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+      ctrl="0.125 0.125 0.125 0.125 0 0 0 0 0 0 0 0"/>
+    <key name="home_R2_red"
+      qpos="-5.2 -1.4 0.5 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+      ctrl="0.125 0.125 0.125 0.125 0 0 0 0 0 0 0 0"/>
+  </keyframe>
+
+</mujoco>

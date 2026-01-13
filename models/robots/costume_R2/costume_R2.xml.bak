@@ -1,0 +1,157 @@
+<mujoco model="costume_R2">
+  <compiler angle="radian" texturedir="textures" autolimits="true"/>
+
+  <default>
+    <default class="costume_R2">
+      <default class="visual">
+        <geom type="mesh" contype="0" conaffinity="0" group="1"/>
+      </default>
+      <default class="collision">
+        <geom group="3" type="mesh" condim="3" contype="1" conaffinity="1" friction="1.0 0.005 0.0001" rgba="0.8 0.2 0.2 0.5"/>
+      </default>
+      <joint damping="0.5" frictionloss="0.1" armature="0.01"/>
+    </default>
+  </default>
+
+  <asset>
+    <mesh name="base_link_vis" file="meshes/visual/base_link.STL" />
+    <mesh name="LF_rail_link_vis" file="meshes/visual/LF_rail_link.STL" />
+    <mesh name="LF_yaw_link_vis" file="meshes/visual/LF_yaw_link.STL" />
+    <mesh name="LF_wheel_link_vis" file="meshes/visual/LF_wheel_link.STL" />
+    <mesh name="LR_rail_link_vis" file="meshes/visual/LR_rail_link.STL" />
+    <mesh name="LR_yaw_link_vis" file="meshes/visual/LR_yaw_link.STL" />
+    <mesh name="LR_wheel_link_vis" file="meshes/visual/LR_wheel_link.STL" />
+    <mesh name="RF_rail_link_vis" file="meshes/visual/RF_rail_link.STL" />
+    <mesh name="RF_yaw_link_vis" file="meshes/visual/RF_yaw_link.STL" />
+    <mesh name="RF_wheel_link_vis" file="meshes/visual/RF_wheel_link.STL" />
+    <mesh name="RR_rail_link_vis" file="meshes/visual/RR_rail_link.STL" />
+    <mesh name="RR_yaw_link_vis" file="meshes/visual/RR_yaw_link.STL" />
+    <mesh name="RR_wheel_link_vis" file="meshes/visual/RR_wheel_link.STL" />
+
+    <mesh name="base_link_col" file="meshes/collision/base_link.STL" />
+    <mesh name="LF_rail_link_col" file="meshes/collision/LF_rail_link.STL" />
+    <mesh name="LF_yaw_link_col" file="meshes/collision/LF_yaw_link.STL" />
+    <mesh name="LR_rail_link_col" file="meshes/collision/LR_rail_link.STL" />
+    <mesh name="LR_yaw_link_col" file="meshes/collision/LR_yaw_link.STL" />
+    <mesh name="RF_rail_link_col" file="meshes/collision/RF_rail_link.STL" />
+    <mesh name="RF_yaw_link_col" file="meshes/collision/RF_yaw_link.STL" />
+    <mesh name="RR_rail_link_col" file="meshes/collision/RR_rail_link.STL" />
+    <mesh name="RR_yaw_link_col" file="meshes/collision/RR_yaw_link.STL" />
+
+    <material name="base_material" rgba="0.898 0.918 0.929 1" />
+    <material name="rail_material" rgba="0.647 0.620 0.588 1" />
+    <material name="yaw_material" rgba="0.898 0.918 0.929 1" />
+    <material name="wheel_material" rgba="0.298 0.298 0.298 1" />
+  </asset>
+
+  <option timestep="0.002" gravity="0 0 -9.81"/>
+
+  <worldbody>
+    <body name="base_link" childclass="costume_R2" pos="-5.2 1.4 1.0">
+      <inertial pos="0.001206 -0.353411 0.016987" mass="20.0" diaginertia="0.2 0.2 0.2" />
+      <site name="imu_site" pos="0 0 0" size="0.01" rgba="1 0 0 1"/>
+      <freejoint/>
+      
+      <geom name="base_geom_visual" class="visual" mesh="base_link_vis" material="base_material" />
+      <geom name="base_geom_collision" class="collision" mesh="base_link_col" />
+
+      <body name="LF_rail_link" pos="0.30193 -0.654 0.33384">
+        <geom name="LF_rail_geom_visual" class="visual" mesh="LF_rail_link_vis" material="rail_material" />
+        <geom name="LF_rail_geom_collision" class="collision" mesh="LF_rail_link_col" />
+        <joint name="LF_rail_joint" type="slide" axis="0 0 -1" limited="true" range="0 0.25" armature="0.01" damping="20" />
+
+        <body name="LF_yaw_link" pos="0 0 -0.3778">
+          <geom name="LF_yaw_geom_visual" class="visual" mesh="LF_yaw_link_vis" material="yaw_material" />
+          <geom name="LF_yaw_geom_collision" class="collision" mesh="LF_yaw_link_col" />
+          <joint name="LF_yaw_joint" type="hinge" axis="0 0 1" limited="true" range="-3.14 3.14" armature="0.001" damping="0.5" />
+
+          <body name="LF_wheel_link" pos="-0.0098995 -0.0098995 -0.0465" euler="1.57 0 0">
+            <inertial pos="0 0 -0.010192" mass="0.2" diaginertia="0.0001 0.0001 0.0001" />
+            <geom pos="0.0000 0.0000 0.0000" name="LF_wheel_geom_visual" class="visual" mesh="LF_wheel_link_vis" material="wheel_material" euler="0.0000 1.5700 0.0000"/>
+            <geom name="LF_wheel_geom_collision" class="collision" size="0.05" type="sphere"/>
+            <joint name="LF_wheel_joint" type="hinge" axis="0 0 1" armature="0.001" damping="0.05" />
+          </body>
+        </body>
+      </body>
+
+      <body name="LR_rail_link" pos="0.30193 -0.054 0.33384">
+        <geom name="LR_rail_geom_visual" class="visual" mesh="LR_rail_link_vis" material="rail_material" />
+        <geom name="LR_rail_geom_collision" class="collision" mesh="LR_rail_link_col" />
+        <joint name="LR_rail_joint" type="slide" axis="0 0 -1" limited="true" range="0 0.25" armature="0.01" damping="20" />
+
+        <body name="LR_yaw_link" pos="0 0 -0.3778">
+          <geom name="LR_yaw_geom_visual" class="visual" mesh="LR_yaw_link_vis" material="yaw_material" />
+          <geom name="LR_yaw_geom_collision" class="collision" mesh="LR_yaw_link_col" />
+          <joint name="LR_yaw_joint" type="hinge" axis="0 0 1" limited="true" range="-3.14 3.14" armature="0.001" damping="0.5" />
+
+          <body name="LR_wheel_link" pos="0.0098995 -0.0098995 -0.0465" euler="1.57 0 0">
+            <inertial pos="0 0 -0.010192" mass="0.2" diaginertia="0.0001 0.0001 0.0001" />
+            <geom pos="0.0000 0.0000 0.0000" name="LR_wheel_geom_visual" class="visual" mesh="LR_wheel_link_vis" material="wheel_material" euler="0.0000 1.5700 0.0000"/>
+            <geom name="LR_wheel_geom_collision" class="collision" size="0.05" type="sphere"/>
+            <joint name="LR_wheel_joint" type="hinge" axis="0 0 1" armature="0.001" damping="0.05" />
+          </body>
+        </body>
+      </body>
+
+      <body name="RF_rail_link" pos="-0.29807 -0.654 0.33384">
+        <geom name="RF_rail_geom_visual" class="visual" mesh="RF_rail_link_vis" material="rail_material" />
+        <geom name="RF_rail_geom_collision" class="collision" mesh="RF_rail_link_col" />
+        <joint name="RF_rail_joint" type="slide" axis="0 0 -1" limited="true" range="0 0.25" armature="0.01" damping="20" />
+
+        <body name="RF_yaw_link" pos="0 0 -0.3778">
+          <geom name="RF_yaw_geom_visual" class="visual" mesh="RF_yaw_link_vis" material="yaw_material" />
+          <geom name="RF_yaw_geom_collision" class="collision" mesh="RF_yaw_link_col" />
+          <joint name="RF_yaw_joint" type="hinge" axis="0 0 1" limited="true" range="-3.14 3.14" armature="0.001" damping="0.5" />
+
+          <body name="RF_wheel_link" pos="-0.0098995 0.0098995 -0.0465" euler="1.57 0 0">
+            <inertial pos="0 0 -0.010192" mass="0.2" diaginertia="0.0001 0.0001 0.0001" />
+            <geom pos="0.0000 0.0000 0.0000" name="RF_wheel_geom_visual" class="visual" mesh="RF_wheel_link_vis" material="wheel_material" euler="0.0000 1.5700 0.0000"/>
+            <geom name="RF_wheel_geom_collision" class="collision" size="0.05" type="sphere"/>
+            <joint name="RF_wheel_joint" type="hinge" axis="0 0 1" armature="0.001" damping="0.05" />
+          </body>
+        </body>
+      </body>
+
+      <body name="RR_rail_link" pos="-0.29807 -0.054 0.33384">
+        <geom name="RR_rail_geom_visual" class="visual" mesh="RR_rail_link_vis" material="rail_material" />
+        <geom name="RR_rail_geom_collision" class="collision" mesh="RR_rail_link_col" />
+        <joint name="RR_rail_joint" type="slide" axis="0 0 -1" limited="true" range="0 0.25" armature="0.01" damping="20" />
+
+        <body name="RR_yaw_link" pos="0 0 -0.3778">
+          <geom name="RR_yaw_geom_visual" class="visual" mesh="RR_yaw_link_vis" material="yaw_material" />
+          <geom name="RR_yaw_geom_collision" class="collision" mesh="RR_yaw_link_col" />
+          <joint name="RR_yaw_joint" type="hinge" axis="0 0 1" limited="true" range="-3.14 3.14" armature="0.001" damping="0.5" />
+
+          <body name="RR_wheel_link" pos="0.0098995 0.0098995 -0.0465" euler="1.57 0 0">
+            <inertial pos="0 0 -0.010192" mass="0.2" diaginertia="0.0001 0.0001 0.0001" />
+            <geom pos="0.0000 0.0000 0.0000" name="RR_wheel_geom_visual" class="visual" mesh="RR_wheel_link_vis" material="wheel_material" euler="0.0000 1.5700 0.0000"/>
+            <geom name="RR_wheel_geom_collision" class="collision" size="0.05" type="sphere"/>
+            <joint name="RR_wheel_joint" type="hinge" axis="0 0 1" armature="0.001" damping="0.05" />
+          </body>
+        </body>
+      </body>
+    </body>
+  </worldbody>
+
+  <actuator>
+    <position name="LF_rail_motor" joint="LF_rail_joint" kp="2000" ctrlrange="0 0.25" forcelimited="true" forcerange="-200 200"/>
+    <position name="LR_rail_motor" joint="LR_rail_joint" kp="2000" ctrlrange="0 0.25" forcelimited="true" forcerange="-200 200"/>
+    <position name="RF_rail_motor" joint="RF_rail_joint" kp="2000" ctrlrange="0 0.25" forcelimited="true" forcerange="-200 200"/>
+    <position name="RR_rail_motor" joint="RR_rail_joint" kp="2000" ctrlrange="0 0.25" forcelimited="true" forcerange="-200 200"/>
+
+    <position name="LF_yaw_motor" joint="LF_yaw_joint" kp="50" ctrlrange="-3.14 3.14" forcelimited="true" forcerange="-20 20"/>
+    <position name="LR_yaw_motor" joint="LR_yaw_joint" kp="50" ctrlrange="-3.14 3.14" forcelimited="true" forcerange="-20 20"/>
+    <position name="RF_yaw_motor" joint="RF_yaw_joint" kp="50" ctrlrange="-3.14 3.14" forcelimited="true" forcerange="-20 20"/>
+    <position name="RR_yaw_motor" joint="RR_yaw_joint" kp="50" ctrlrange="-3.14 3.14" forcelimited="true" forcerange="-20 20"/>
+
+    <velocity name="LF_wheel_motor" joint="LF_wheel_joint" kv="50" ctrlrange="-500 500" forcelimited="true" forcerange="-100 100"/>
+    <velocity name="LR_wheel_motor" joint="LR_wheel_joint" kv="50" ctrlrange="-500 500" forcelimited="true" forcerange="-100 100"/>
+    <velocity name="RF_wheel_motor" joint="RF_wheel_joint" kv="50" ctrlrange="-500 500" forcelimited="true" forcerange="-100 100"/>
+    <velocity name="RR_wheel_motor" joint="RR_wheel_joint" kv="50" ctrlrange="-500 500" forcelimited="true" forcerange="-100 100"/>
+  </actuator>
+
+  <sensor>
+    <accelerometer name="base_accel" site="imu_site" />
+    <gyro name="base_gyro" site="imu_site" />
+  </sensor>
+</mujoco>

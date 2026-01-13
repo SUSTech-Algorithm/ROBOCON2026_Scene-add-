@@ -3,183 +3,229 @@ import time
 import numpy as np
 import mujoco
 import mujoco.viewer
-import cv2  # 用于显示摄像头画面
+import cv2
 from pathlib import Path
-from pynput import keyboard 
 
-# ================= 1. 路径配置 =================
-# 获取当前脚本所在目录
+# --- 1. 路径自动解析 (保持不变，确保能找到文件) ---
 CURRENT_DIR = Path(__file__).resolve().parent
-
-# 根据你的目录结构，回退两层找到项目根目录
-# 假设结构: ROBOCON2026_Scene/src/robots/此脚本.py
 PROJECT_ROOT = CURRENT_DIR.parent.parent 
-
-# 指向你的 XML 文件 (请确认文件名是否正确)
-# 这里指向我们刚才做好的 "costume_R2.xml" (包含光源、地面、摄像头)
 SCENE_XML_PATH = PROJECT_ROOT / "models" / "mjcf" / "scene_costume_R2.xml"
 
-# ================= 2. 运动学解算 (Swerve Drive) =================
-class SwerveDriveKinematics:
-    def compute(self, vx, vy, wz):
-        speed = np.sqrt(vx**2 + vy**2)
-        angle = np.arctan2(vy, vx)
+# --- 2. 配置参数 (使用您提供的参数) ---
+MAX_SPEED = 50.0       
+ROTATION_SPEED = 3.0   
+RAIL_MIN = 0.0
+RAIL_MAX = 0.25        
+RAIL_STEP = 0.02       
+
+# 摄像头名称
+CAMERA_NAME = "rgb_camera"
+
+# Offset
+OFFSETS = {
+    'front_left':   -np.pi/4, 
+    'front_right':  +np.pi/4,
+    'rear_left':    -3*np.pi/4,
+    'rear_right':   +3*np.pi/4
+}
+
+# 映射关系
+WHEEL_MAP_CONFIG = {
+    'front_left':   'RR', 
+    'front_right':  'LR',  
+    'rear_left':    'RF',  
+    'rear_right':   'LF',  
+}
+
+# 几何坐标 (X=右, Y=前)
+WHEEL_GEOMETRY = {
+    'front_left':   (-1.0,  1.0), 
+    'front_right':  ( 1.0,  1.0), 
+    'rear_left':    (-1.0, -1.0), 
+    'rear_right':   ( 1.0, -1.0), 
+}
+
+class ChassisController:
+    def __init__(self, model, data):
+        self.model = model
+        self.data = data
         
-        if abs(wz) > 0.05:
-            # 自旋模式
-            angles = np.array([np.pi/4, 3*np.pi/4, np.pi/4, 3*np.pi/4])
-            # 轮子速度指令 (对应 XML 里的 <velocity>)
-            speeds = np.array([-wz, -wz, -wz, -wz]) * 100.0
-        else:
-            # 平移模式
-            angles = np.array([angle, angle, angle, angle])
-            speeds = np.array([speed, speed, speed, speed]) * 100.0
-        return angles, speeds
+        self.actuators = {}
+        # 查找所有电机
+        for name in ['LF', 'RF', 'LR', 'RR']:
+            self.actuators[f"{name}_steer"] = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_ACTUATOR, f"{name}_steer")
+            self.actuators[f"{name}_drive"] = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_ACTUATOR, f"{name}_drive")
+            
+            # 悬挂电机检查
+            rail_name = f"{name}_rail"
+            rail_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_ACTUATOR, rail_name)
+            if rail_id != -1:
+                self.actuators[rail_name] = rail_id
+            else:
+                print(f"[严重警告] XML中没找到 {rail_name}！按升降键将无效。")
 
-# ================= 3. 键盘控制器 =================
-class KeyboardController:
-    def __init__(self):
-        self.kinematics = SwerveDriveKinematics()
-        self.pressed_keys = set()
+        self.wheels = {}
+        for logic_name, xml_prefix in WHEEL_MAP_CONFIG.items():
+            # 这里添加 try-except 防止电机ID没找到报错
+            try:
+                steer_id = self.actuators[f"{xml_prefix}_steer"]
+                drive_id = self.actuators[f"{xml_prefix}_drive"]
+                
+                if steer_id == -1 or drive_id == -1: continue
+
+                wheel_data = {
+                    'steer_id': steer_id,
+                    'drive_id': drive_id,
+                    'pos': WHEEL_GEOMETRY[logic_name]
+                }
+                if f"{xml_prefix}_rail" in self.actuators:
+                    wheel_data['rail_id'] = self.actuators[f"{xml_prefix}_rail"]
+                
+                self.wheels[logic_name] = wheel_data
+            except KeyError:
+                pass
+
+        self.vx = 0.0 
+        self.vy = 0.0 
+        self.w  = 0.0
+        self.rail_height = 0.0
+
+    def key_callback(self, keycode):
+        # --- 按键侦测器 (完全使用您的逻辑) ---
+        print(f"Debug: Key Pressed Code = {keycode}") 
+
+        self.vx = 0.0
+        self.vy = 0.0
+        self.w = 0.0
         
-        # 初始状态
-        self.rail_target = 0.0
+        # 移动 (上下左右)
+        if keycode == 265 or keycode == 87:   # Up / W
+            self.vy = 1.0
+        elif keycode == 264 or keycode == 83: # Down / S
+            self.vy = -1.0
+        elif keycode == 263 or keycode == 65: # Left / A
+            self.vx = -1.0
+        elif keycode == 262 or keycode == 68: # Right / D
+            self.vx = 1.0
         
-        # 速度参数
-        self.MOVE_SPEED = 2.0   # 移动速度
-        self.TURN_SPEED = 3.0   # 旋转速度
-        self.RAIL_SPEED = 0.002 # 升降速度
+        # 旋转 (注意：这里严格按照您提供的：Q=-1, E=1)
+        elif keycode == 81:  # Q
+            self.w = -1.0  
+        elif keycode == 69:  # E
+            self.w = 1.0   
 
-        # 启动监听 (设置为守护线程，随主程序退出)
-        self.listener = keyboard.Listener(
-            on_press=self.on_press,
-            on_release=self.on_release)
-        self.listener.daemon = True
-        self.listener.start()
+        # --- 悬挂控制 ---
+        elif keycode == 61: # + 键 -> 设为最大
+            self.rail_height = RAIL_MAX 
+            print(f"悬挂: 升至最高 ({RAIL_MAX})")
+            
+        elif keycode == 45: # - 键 -> 设为最小
+            self.rail_height = RAIL_MIN 
+            print(f"悬挂: 降至最低 ({RAIL_MIN})")
 
-    def on_press(self, key):
-        try:
-            if hasattr(key, 'char') and key.char:
-                self.pressed_keys.add(key.char.upper())
-        except AttributeError:
-            pass
+        elif keycode == 32:  # Space
+            self.vy = self.vx = self.w = 0.0
 
-    def on_release(self, key):
-        try:
-            if hasattr(key, 'char') and key.char:
-                char = key.char.upper()
-                if char in self.pressed_keys:
-                    self.pressed_keys.remove(char)
-        except AttributeError:
-            pass
+        # 限制范围
+        self.rail_height = np.clip(self.rail_height, RAIL_MIN, RAIL_MAX)
 
-    def get_control(self, model, data):
-        vx, vy, wz = 0.0, 0.0, 0.0
+    def update(self):
+        for name, wheel in self.wheels.items():
+            # 1. 悬挂控制
+            if 'rail_id' in wheel:
+                self.data.ctrl[wheel['rail_id']] = self.rail_height
 
-        # 解析移动 WASD
-        if 'W' in self.pressed_keys: vx += self.MOVE_SPEED
-        if 'S' in self.pressed_keys: vx -= self.MOVE_SPEED
-        if 'A' in self.pressed_keys: vy += self.MOVE_SPEED
-        if 'D' in self.pressed_keys: vy -= self.MOVE_SPEED
+            # 2. 运动学
+            rx, ry = wheel['pos'] 
+            wheel_vx = self.vx - (self.w * ROTATION_SPEED) * ry
+            wheel_vy = self.vy + (self.w * ROTATION_SPEED) * rx
+            
+            target_speed = np.sqrt(wheel_vx**2 + wheel_vy**2)
+            
+            if target_speed < 0.1:
+                self.data.ctrl[wheel['drive_id']] = 0.0
+                continue
 
-        # 解析旋转 QE
-        if 'Q' in self.pressed_keys: wz += self.TURN_SPEED
-        if 'E' in self.pressed_keys: wz -= self.TURN_SPEED
+            target_angle = np.arctan2(wheel_vy, wheel_vx)
+            final_angle = target_angle + OFFSETS[name]
+            final_angle = (final_angle + np.pi) % (2 * np.pi) - np.pi
+            
+            self.data.ctrl[wheel['steer_id']] = final_angle
+            self.data.ctrl[wheel['drive_id']] = target_speed * MAX_SPEED
 
-        # 解析升降 RF
-        if 'R' in self.pressed_keys: self.rail_target += self.RAIL_SPEED
-        if 'F' in self.pressed_keys: self.rail_target -= self.RAIL_SPEED
-        
-        # 限制高度 0 ~ 0.25米
-        self.rail_target = np.clip(self.rail_target, 0.0, 0.25)
-
-        # 运动学解算
-        wheel_angles, wheel_speeds = self.kinematics.compute(vx, vy, wz)
-
-        # 下发指令
-        data.ctrl[0:4] = self.rail_target   # 升降
-        data.ctrl[4:8] = wheel_angles       # 转向
-        data.ctrl[8:12] = wheel_speeds      # 驱动
-
-# ================= 4. 主程序 (融合了控制和画面显示) =================
 def main():
-    # --- A. 路径检查 ---
-    if not SCENE_XML_PATH.exists():
-        # 如果找不到，尝试在当前目录找
-        local_path = CURRENT_DIR / "costume_R2.xml"
-        if local_path.exists():
-            xml_path = str(local_path)
+    # 路径安全检查
+    xml_path = SCENE_XML_PATH
+    if not xml_path.exists():
+        fallback_path = CURRENT_DIR / "scene_costume_R2.xml"
+        if fallback_path.exists():
+            xml_path = fallback_path
         else:
-            print(f"[错误] 找不到文件: {SCENE_XML_PATH}")
-            print(f"       也没有找到: {local_path}")
+            print(f"[错误] 找不到 XML 文件: {xml_path}")
             return
-    else:
-        xml_path = str(SCENE_XML_PATH)
 
     print(f"[-] 加载模型: {xml_path}")
     
-    # --- B. 加载模型 ---
     try:
-        model = mujoco.MjModel.from_xml_path(xml_path)
+        model = mujoco.MjModel.from_xml_path(str(xml_path))
         data = mujoco.MjData(model)
     except Exception as e:
         print(f"[加载失败] {e}")
         return
 
-    model.opt.gravity[:] = [0, 0, -9.81]
+    controller = ChassisController(model, data)
 
-    # --- C. 初始化控制器 ---
-    controller = KeyboardController()
-    mujoco.set_mjcb_control(controller.get_control)
-
-    # --- D. 初始化摄像头渲染器 (用于 OpenCV 显示) ---
-    camera_name = "head_camera"
+    # --- 摄像头设置 ---
     renderer = None
-    try:
-        # 检查摄像头是否存在
-        model.camera(camera_name)
-        # 创建渲染器: 640x480 分辨率
+    cam_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_CAMERA, CAMERA_NAME)
+    if cam_id != -1:
         renderer = mujoco.Renderer(model, height=480, width=640)
-        print(f"[-] 摄像头 '{camera_name}' 初始化成功")
-    except KeyError:
-        print(f"[警告] XML中找不到摄像头 '{camera_name}'，将无法显示第一人称画面。")
+        print(f"[-] 摄像头 '{CAMERA_NAME}' 就绪")
+    else:
+        print(f"[提示] 未找到摄像头 '{CAMERA_NAME}'，仅显示主窗口")
 
-    # --- E. 启动被动查看器循环 ---
-    # 使用 launch_passive 才能自定义循环，实现 OpenCV 和 MuJoCo 并存
-    with mujoco.viewer.launch_passive(model, data) as viewer:
-        print("=== 仿真已启动 ===")
-        print(" [键盘] W/A/S/D: 移动 | Q/E: 旋转 | R/F: 升降")
-        
-        last_render_time = 0
+    dt = model.opt.timestep
+    fps_target = 60.0
+    steps_per_frame = int((1.0 / fps_target) / dt)
+
+    with mujoco.viewer.launch_passive(model, data, key_callback=controller.key_callback) as viewer:
+        mujoco.mj_resetData(model, data)
+        viewer.opt.frame = mujoco.mjtFrame.mjFRAME_NONE 
+        last_cam_time = 0
+
+        print("=== 系统启动 ===")
+        print("移动: 方向键 或 WASD")
+        print("旋转: Q / E")
+        print("悬挂: [ (降低) / ] (升高)")
         
         while viewer.is_running():
             step_start = time.time()
-
-            # 1. 物理步进 (让机器人动起来)
-            mujoco.mj_step(model, data)
-
-            # 2. 同步 MuJoCo 窗口 (显示光源和场景)
+            
+            # 更新控制器
+            controller.update()
+            
+            # 物理步进
+            for _ in range(steps_per_frame):
+                mujoco.mj_step(model, data)
+                
             viewer.sync()
 
-            # 3. 处理摄像头画面 (OpenCV)
-            if renderer:
-                # 限制刷新率 30FPS，防止卡顿
-                if time.time() - last_render_time > 0.033:
+            # OpenCV 渲染 (如果摄像头存在)
+            if renderer and viewer.is_running():
+                now = time.time()
+                if now - last_cam_time > 0.05: 
                     try:
-                        renderer.update_scene(data, camera=camera_name)
+                        renderer.update_scene(data, camera=CAMERA_NAME)
                         img = renderer.render()
-                        # RGB 转 BGR (OpenCV格式)
                         img_bgr = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
-                        cv2.imshow("Robot Camera", img_bgr)
-                        cv2.waitKey(1)
-                        last_render_time = time.time()
-                    except Exception as e:
-                        pass # 忽略渲染错误，防止程序崩溃
+                        cv2.imshow("Robot Cam", img_bgr)
+                        if cv2.waitKey(1) == 27: break
+                        last_cam_time = now
+                    except Exception: pass
 
-            # 4. 时间同步
-            time_until_next_step = model.opt.timestep - (time.time() - step_start)
-            if time_until_next_step > 0:
-                time.sleep(time_until_next_step)
+            elapsed = time.time() - step_start
+            if elapsed < 1.0/fps_target:
+                time.sleep(1.0/fps_target - elapsed)
 
     cv2.destroyAllWindows()
 
