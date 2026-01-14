@@ -45,7 +45,7 @@
             </body>
             <inertial pos="0.001206 -0.353411 0.016987" mass="2.804" diaginertia="0.015653 0.013748 0.027267"/>
             
-            <geom type="mesh" rgba="0.9 0.9 0.9 1" mesh="base_link" contype="0" conaffinity="0" group="1"/>
+            <geom type="mesh" rgba="0.0 0.0 0.9 1" mesh="base_link" contype="0" conaffinity="0" group="1"/>
 
             <geom type="box" size="0.02 0.3 0.02" pos="0.3 -0.354 0" group="3" contype="1" conaffinity="1"/>
             <geom type="box" size="0.02 0.3 0.02" pos="-0.3 -0.354 0" group="3" contype="1" conaffinity="1"/>
