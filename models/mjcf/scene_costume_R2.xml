@@ -1,6 +1,13 @@
 <mujoco>
+    <option timestep="0.002" 
+            integrator="Euler" 
+            solver="Newton" 
+            iterations="50" 
+            tolerance="1e-10" 
+            gravity="0 0 -9.81"
+            impratio="10"/>
   <!-- Include the costume R2 robot -->
-  <include file="../robots/costume_R2/costume_R2.xml"/>
+  <include file="../robots/costume_R2/chassis.xml"/>
   <include file="robocon2026.xml"/>
 
   <!-- Initial robot positions -->
