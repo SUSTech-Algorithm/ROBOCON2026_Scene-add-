@@ -1,233 +1,235 @@
-import sys
-import time
-import numpy as np
+import cv2
 import mujoco
 import mujoco.viewer
-import cv2
-from pathlib import Path
+import numpy as np
+import os
+import signal
+import sys
+import time
+import pygame
 
-# --- 1. 路径自动解析 (保持不变，确保能找到文件) ---
-CURRENT_DIR = Path(__file__).resolve().parent
-PROJECT_ROOT = CURRENT_DIR.parent.parent 
-SCENE_XML_PATH = PROJECT_ROOT / "models" / "mjcf" / "scene_costume_R2.xml"
+# ================= 配置区域 =================
+XML_PATH = "models/mjcf/scene_costume_R2.xml"
 
-# --- 2. 配置参数 (使用您提供的参数) ---
-MAX_SPEED = 50.0       
-ROTATION_SPEED = 3.0   
-RAIL_MIN = 0.0
-RAIL_MAX = 0.25        
-RAIL_STEP = 0.02       
+RAIL_MIN = -0.50
+RAIL_MAX = 0.25   
+RAIL_SPEED = 0.001 
 
-# 摄像头名称
-CAMERA_NAME = "rgb_camera"
+NORMAL_SPEED = 80.0    
+TURBO_SPEED  = 200.0   
+ROTATION_SPEED = 5.0   
 
-# Offset
+# 按键配置
+KEY_CONFIG = {
+    'FORWARD':  pygame.K_UP,
+    'BACKWARD': pygame.K_DOWN,
+    'LEFT':     pygame.K_LEFT,
+    'RIGHT':    pygame.K_RIGHT,
+    'TURN_L':   pygame.K_q,
+    'TURN_R':   pygame.K_e,
+    'F_UP':     pygame.K_EQUALS, # =
+    'F_DOWN':   pygame.K_MINUS,  # -
+    'R_UP':     pygame.K_LSHIFT,
+    'R_DOWN':   pygame.K_RETURN, # Enter
+    'TURBO':    pygame.K_SPACE,
+    'QUIT':     pygame.K_ESCAPE
+}
+
 OFFSETS = {
-    'front_left':   -np.pi/4, 
-    'front_right':  +np.pi/4,
-    'rear_left':    -3*np.pi/4,
-    'rear_right':   +3*np.pi/4
+    'front_left': -np.pi/4, 'front_right': +np.pi/4,
+    'rear_left': -3*np.pi/4, 'rear_right': +3*np.pi/4
 }
-
-# 映射关系
 WHEEL_MAP_CONFIG = {
-    'front_left':   'RR', 
-    'front_right':  'LR',  
-    'rear_left':    'RF',  
-    'rear_right':   'LF',  
+    'front_left': 'RR', 'front_right': 'LR',  
+    'rear_left': 'RF', 'rear_right': 'LF',  
 }
-
-# 几何坐标 (X=右, Y=前)
 WHEEL_GEOMETRY = {
-    'front_left':   (-1.0,  1.0), 
-    'front_right':  ( 1.0,  1.0), 
-    'rear_left':    (-1.0, -1.0), 
-    'rear_right':   ( 1.0, -1.0), 
+    'front_left': (-1.0, 1.0), 'front_right': (1.0, 1.0), 
+    'rear_left': (-1.0, -1.0), 'rear_right': (1.0, -1.0), 
 }
+CAMERA_NAME = "rgb_camera"
 
 class ChassisController:
     def __init__(self, model, data):
         self.model = model
         self.data = data
+        self.init_input_system()
         
+        self.vx, self.vy, self.w = 0.0, 0.0, 0.0
+        self.rail_pos_front = 0.0
+        self.rail_pos_rear = 0.0
+        
+        self.rail_targets = {k: 0.0 for k in ['front_left', 'front_right', 'rear_left', 'rear_right']}
+        self.current_max_speed = NORMAL_SPEED 
+
         self.actuators = {}
-        # 查找所有电机
-        for name in ['LF', 'RF', 'LR', 'RR']:
-            self.actuators[f"{name}_steer"] = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_ACTUATOR, f"{name}_steer")
-            self.actuators[f"{name}_drive"] = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_ACTUATOR, f"{name}_drive")
-            
-            # 悬挂电机检查
-            rail_name = f"{name}_rail"
-            rail_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_ACTUATOR, rail_name)
-            if rail_id != -1:
-                self.actuators[rail_name] = rail_id
-            else:
-                print(f"[严重警告] XML中没找到 {rail_name}！按升降键将无效。")
-
         self.wheels = {}
-        for logic_name, xml_prefix in WHEEL_MAP_CONFIG.items():
-            # 这里添加 try-except 防止电机ID没找到报错
-            try:
-                steer_id = self.actuators[f"{xml_prefix}_steer"]
-                drive_id = self.actuators[f"{xml_prefix}_drive"]
-                
-                if steer_id == -1 or drive_id == -1: continue
-
-                wheel_data = {
-                    'steer_id': steer_id,
-                    'drive_id': drive_id,
-                    'pos': WHEEL_GEOMETRY[logic_name]
-                }
-                if f"{xml_prefix}_rail" in self.actuators:
-                    wheel_data['rail_id'] = self.actuators[f"{xml_prefix}_rail"]
-                
-                self.wheels[logic_name] = wheel_data
-            except KeyError:
-                pass
-
-        self.vx = 0.0 
-        self.vy = 0.0 
-        self.w  = 0.0
-        self.rail_height = 0.0
-
-    def key_callback(self, keycode):
-        # --- 按键侦测器 (完全使用您的逻辑) ---
-        print(f"Debug: Key Pressed Code = {keycode}") 
-
-        self.vx = 0.0
-        self.vy = 0.0
-        self.w = 0.0
         
-        # 移动 (上下左右)
-        if keycode == 265 or keycode == 87:   # Up / W
-            self.vy = 1.0
-        elif keycode == 264 or keycode == 83: # Down / S
-            self.vy = -1.0
-        elif keycode == 263 or keycode == 65: # Left / A
-            self.vx = -1.0
-        elif keycode == 262 or keycode == 68: # Right / D
-            self.vx = 1.0
+        for name in ['LF', 'RF', 'LR', 'RR']:
+            s_n, d_n, r_n = f"{name}_steer", f"{name}_drive", f"{name}_rail"
+            s_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_ACTUATOR, s_n)
+            d_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_ACTUATOR, d_n)
+            r_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_ACTUATOR, r_n)
+            j_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, f"{name}_yaw_joint")
+            if j_id == -1: j_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, f"{name}_steer_joint")
+            q_adr = model.jnt_qposadr[j_id] if j_id != -1 else None
+            self.actuators[f"{name}_data"] = {'s': s_id, 'd': d_id, 'r': r_id, 'q': q_adr}
+
+        for logic, prefix in WHEEL_MAP_CONFIG.items():
+            d = self.actuators[f"{prefix}_data"]
+            self.wheels[logic] = {'steer': d['s'], 'drive': d['d'], 'rail': d['r'], 'q': d['q'], 'pos': WHEEL_GEOMETRY[logic]}
+
+    def init_input_system(self):
+        pygame.init()
+        # 🔥🔥🔥 关键修改：必须创建一个窗口才能接收键盘 🔥🔥🔥
+        pygame.display.set_caption("点击这个窗口来控制机器人")
+        self.screen = pygame.display.set_mode((400, 100))
         
-        # 旋转 (注意：这里严格按照您提供的：Q=-1, E=1)
-        elif keycode == 81:  # Q
-            self.w = -1.0  
-        elif keycode == 69:  # E
-            self.w = 1.0   
+        # 在窗口上写字提示
+        font = pygame.font.SysFont("Arial", 24)
+        text = font.render("Click HERE to control robot!", True, (255, 255, 255))
+        self.screen.blit(text, (20, 30))
+        pygame.display.flip()
+        
+        print("\n✅ 控制窗口已创建 - 请确保你点中了那个黑色小窗口！")
 
-        # --- 悬挂控制 ---
-        elif keycode == 61: # + 键 -> 设为最大
-            self.rail_height = RAIL_MAX 
-            print(f"悬挂: 升至最高 ({RAIL_MAX})")
-            
-        elif keycode == 45: # - 键 -> 设为最小
-            self.rail_height = RAIL_MIN 
-            print(f"悬挂: 降至最低 ({RAIL_MIN})")
+    def process_input(self):
+        # 处理事件循环
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                sys.exit(0)
 
-        elif keycode == 32:  # Space
-            self.vy = self.vx = self.w = 0.0
+        keys = pygame.key.get_pressed()
+        self.vx, self.vy, self.w = 0.0, 0.0, 0.0
+        
+        # 调试打印：如果你按键时这里没反应，说明窗口没聚焦点
+        # if keys[KEY_CONFIG['FORWARD']]: print("DEBUG: 前进") 
 
-        # 限制范围
-        self.rail_height = np.clip(self.rail_height, RAIL_MIN, RAIL_MAX)
+        if keys[KEY_CONFIG['FORWARD']]:  self.vy = 1.0
+        if keys[KEY_CONFIG['BACKWARD']]: self.vy = -1.0
+        if keys[KEY_CONFIG['LEFT']]:     self.vx = -1.0
+        if keys[KEY_CONFIG['RIGHT']]:    self.vx = 1.0
+        if keys[KEY_CONFIG['TURN_L']]:   self.w = 1.0
+        if keys[KEY_CONFIG['TURN_R']]:   self.w = -1.0
+
+        if keys[KEY_CONFIG['TURBO']]:
+            self.current_max_speed = TURBO_SPEED
+        else:
+            self.current_max_speed = NORMAL_SPEED
+
+        if keys[KEY_CONFIG['F_UP']]:   self.rail_pos_front -= RAIL_SPEED
+        if keys[KEY_CONFIG['F_DOWN']]: self.rail_pos_front += RAIL_SPEED
+        if keys[pygame.K_LSHIFT] or keys[pygame.K_RSHIFT]: self.rail_pos_rear -= RAIL_SPEED
+        if keys[KEY_CONFIG['R_DOWN']]: self.rail_pos_rear += RAIL_SPEED
+
+        self.rail_pos_front = float(np.clip(self.rail_pos_front, RAIL_MIN, RAIL_MAX))
+        self.rail_pos_rear  = float(np.clip(self.rail_pos_rear,  RAIL_MIN, RAIL_MAX))
+
+        self.rail_targets['front_left']  = self.rail_pos_front
+        self.rail_targets['front_right'] = self.rail_pos_front
+        self.rail_targets['rear_left']   = self.rail_pos_rear
+        self.rail_targets['rear_right']  = self.rail_pos_rear
+
+    def optimize_module(self, current_angle, target_angle, target_speed):
+        error = target_angle - current_angle
+        error = np.arctan2(np.sin(error), np.cos(error))
+        if abs(error) > (np.pi / 2):
+            target_angle += np.pi
+            target_speed = -target_speed
+            error = target_angle - current_angle
+            error = np.arctan2(np.sin(error), np.cos(error))
+        scale_factor = np.cos(error)
+        if scale_factor < 0.1: scale_factor = 0.0
+        return np.arctan2(np.sin(target_angle), np.cos(target_angle)), target_speed * scale_factor
 
     def update(self):
+        self.process_input()
         for name, wheel in self.wheels.items():
-            # 1. 悬挂控制
-            if 'rail_id' in wheel:
-                self.data.ctrl[wheel['rail_id']] = self.rail_height
-
-            # 2. 运动学
+            if wheel['rail'] != -1:
+                self.data.ctrl[wheel['rail']] = self.rail_targets[name]
             rx, ry = wheel['pos'] 
             wheel_vx = self.vx - (self.w * ROTATION_SPEED) * ry
             wheel_vy = self.vy + (self.w * ROTATION_SPEED) * rx
-            
-            target_speed = np.sqrt(wheel_vx**2 + wheel_vy**2)
-            
-            if target_speed < 0.1:
-                self.data.ctrl[wheel['drive_id']] = 0.0
+            raw_target_speed = np.sqrt(wheel_vx**2 + wheel_vy**2)
+            if raw_target_speed < 0.05:
+                self.data.ctrl[wheel['drive']] = 0.0
                 continue
-
-            target_angle = np.arctan2(wheel_vy, wheel_vx)
-            final_angle = target_angle + OFFSETS[name]
-            final_angle = (final_angle + np.pi) % (2 * np.pi) - np.pi
-            
-            self.data.ctrl[wheel['steer_id']] = final_angle
-            self.data.ctrl[wheel['drive_id']] = target_speed * MAX_SPEED
+            raw_target_angle = np.arctan2(wheel_vy, wheel_vx) + OFFSETS[name]
+            current_angle = 0.0
+            if wheel['q'] is not None:
+                raw_q = self.data.qpos[wheel['q']]
+                current_angle = np.arctan2(np.sin(raw_q), np.cos(raw_q))
+            opt_angle, opt_speed_factor = self.optimize_module(current_angle, raw_target_angle, raw_target_speed)
+            self.data.ctrl[wheel['steer']] = opt_angle
+            self.data.ctrl[wheel['drive']] = opt_speed_factor * self.current_max_speed
 
 def main():
-    # 路径安全检查
-    xml_path = SCENE_XML_PATH
-    if not xml_path.exists():
-        fallback_path = CURRENT_DIR / "scene_costume_R2.xml"
-        if fallback_path.exists():
-            xml_path = fallback_path
-        else:
-            print(f"[错误] 找不到 XML 文件: {xml_path}")
-            return
-
-    print(f"[-] 加载模型: {xml_path}")
+    stop_requested = False
+    viewer_ref = {'viewer': None}
     
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    abs_xml_path = os.path.join(current_dir, "../../", XML_PATH)
+    if not os.path.exists(abs_xml_path):
+        if os.path.exists(XML_PATH): abs_xml_path = XML_PATH
+        else: return
+
+    def _request_stop(_signum=None, _frame=None):
+        nonlocal stop_requested
+        stop_requested = True
+        if viewer_ref['viewer']: 
+            try: viewer_ref['viewer'].close()
+            except: pass
+        try: cv2.destroyAllWindows()
+        except: pass
+        try: pygame.quit()
+        except: pass
+        sys.exit(0)
+
+    signal.signal(signal.SIGINT, _request_stop)
+    signal.signal(signal.SIGTERM, _request_stop)
+
     try:
-        model = mujoco.MjModel.from_xml_path(str(xml_path))
+        model = mujoco.MjModel.from_xml_path(abs_xml_path)
         data = mujoco.MjData(model)
+        controller = ChassisController(model, data)
     except Exception as e:
-        print(f"[加载失败] {e}")
+        print(f"Error: {e}")
         return
 
-    controller = ChassisController(model, data)
-
-    # --- 摄像头设置 ---
     renderer = None
     cam_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_CAMERA, CAMERA_NAME)
-    if cam_id != -1:
-        renderer = mujoco.Renderer(model, height=480, width=640)
-        print(f"[-] 摄像头 '{CAMERA_NAME}' 就绪")
-    else:
-        print(f"[提示] 未找到摄像头 '{CAMERA_NAME}'，仅显示主窗口")
+    if cam_id != -1: renderer = mujoco.Renderer(model, height=480, width=640)
 
-    dt = model.opt.timestep
-    fps_target = 60.0
-    steps_per_frame = int((1.0 / fps_target) / dt)
+    print("\n🎮 === 启动步骤 ===")
+    print("1. 程序会弹出一个写着 'Click HERE' 的黑色小窗口。")
+    print("2. ⚠️ 必须用鼠标点击那个黑色小窗口！⚠️")
+    print("3. 然后按 ↑ ↓ ← → 控制移动，= - 升降前腿。")
 
-    with mujoco.viewer.launch_passive(model, data, key_callback=controller.key_callback) as viewer:
+    with mujoco.viewer.launch_passive(model, data) as viewer:
+        viewer_ref['viewer'] = viewer
         mujoco.mj_resetData(model, data)
-        viewer.opt.frame = mujoco.mjtFrame.mjFRAME_NONE 
-        last_cam_time = 0
+        # 🔥 这里我把初始高度设高了一点，防止还没开始动就陷进地里
+        data.qpos[2] = 0.5 
+        mujoco.mj_forward(model, data)
+        start_time = time.time()
+        last_cam_time = 0.0
 
-        print("=== 系统启动 ===")
-        print("移动: 方向键 或 WASD")
-        print("旋转: Q / E")
-        print("悬挂: [ (降低) / ] (升高)")
-        
         while viewer.is_running():
+            if stop_requested: break
             step_start = time.time()
-            
-            # 更新控制器
             controller.update()
-            
-            # 物理步进
-            for _ in range(steps_per_frame):
-                mujoco.mj_step(model, data)
-                
+            mujoco.mj_step(model, data)
             viewer.sync()
 
-            # OpenCV 渲染 (如果摄像头存在)
-            if renderer and viewer.is_running():
-                now = time.time()
-                if now - last_cam_time > 0.05: 
-                    try:
-                        renderer.update_scene(data, camera=CAMERA_NAME)
-                        img = renderer.render()
-                        img_bgr = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
-                        cv2.imshow("Robot Cam", img_bgr)
-                        if cv2.waitKey(1) == 27: break
-                        last_cam_time = now
-                    except Exception: pass
+            if renderer and (time.time() - last_cam_time > 0.05):
+                renderer.update_scene(data, camera=CAMERA_NAME)
+                img = renderer.render()
+                cv2.imshow("Robot Cam", cv2.cvtColor(img, cv2.COLOR_RGB2BGR))
+                if cv2.waitKey(1) == 27: break
+                last_cam_time = time.time()
 
-            elapsed = time.time() - step_start
-            if elapsed < 1.0/fps_target:
-                time.sleep(1.0/fps_target - elapsed)
-
-    cv2.destroyAllWindows()
+            time_until_next = model.opt.timestep - (time.time() - step_start)
+            if time_until_next > 0: time.sleep(time_until_next)
 
 if __name__ == "__main__":
     main()
