@@ -13,9 +13,9 @@ XML_PATH = "models/mjcf/scene_costume_R2.xml"
 
 RAIL_MIN = -0.50
 RAIL_MAX = 0.25   
-RAIL_SPEED = 0.001 
+RAIL_SPEED = 0.001
 
-NORMAL_SPEED = 80.0    
+NORMAL_SPEED = 20.0    
 TURBO_SPEED  = 200.0   
 ROTATION_SPEED = 5.0   
 
@@ -55,6 +55,10 @@ class ChassisController:
         self.data = data
         self.init_input_system()
         
+        self.is_auto_running = False  # 是否正在执行自动动作
+        self.auto_start_time = 0.0    # 记录开始时间
+        self.auto_phase = 0
+
         self.vx, self.vy, self.w = 0.0, 0.0, 0.0
         self.rail_pos_front = 0.0
         self.rail_pos_rear = 0.0
@@ -162,6 +166,97 @@ class ChassisController:
             opt_angle, opt_speed_factor = self.optimize_module(current_angle, raw_target_angle, raw_target_speed)
             self.data.ctrl[wheel['steer']] = opt_angle
             self.data.ctrl[wheel['drive']] = opt_speed_factor * self.current_max_speed
+    def process_input(self):
+        
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                sys.exit(0)
+            
+            # ✅ 检测空格键：启动自动程序
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_SPACE and not self.is_auto_running:
+                    print("🚀 [Space] 启动平滑连招...")
+                    self.is_auto_running = True
+                    self.auto_start_time = time.time()
+
+        keys = pygame.key.get_pressed()
+        
+      
+        if self.is_auto_running:
+            # 1. 计算经过的时间
+            elapsed = time.time() - self.auto_start_time
+            
+            # 2. 定义动作速度 (数值越小越慢)
+            # 假设你的循环是60帧/秒，0.005 * 60 = 0.3 (即1秒内移动0.3的距离)
+            AUTO_RAIL_SPEED = 0.0008  
+
+            # --- 动作 A: 始终保持向前运动 ---
+            self.vx = 0.0
+            self.vy = 1.0   # 强制向前
+            self.w  = 0.0
+
+            # --- 阶段 0: 0秒 ~ 1.0秒 (缓慢上升/伸长) ---
+            if elapsed < 1.0:
+                # 前后腿同时慢慢伸长
+                self.rail_pos_front += AUTO_RAIL_SPEED
+                self.rail_pos_rear  += AUTO_RAIL_SPEED
+            
+            # --- 阶段 1: 1.0秒 ~ 2.0秒 (缓慢收 # ==========================================
+        # 🎮 手动模式逻辑
+        # ==========================================前腿) ---
+            elif 1.02 <= elapsed < 2.04:
+                # 慢慢收起前腿
+                self.rail_pos_front -= AUTO_RAIL_SPEED
+
+            # --- 阶段 2: 2.0秒 ~ 3.0秒 (缓慢收后腿) ---
+            elif 6.0 <= elapsed < 7.36:
+                # 慢慢收起后腿
+                self.rail_pos_rear -= AUTO_RAIL_SPEED
+
+            # --- 结束: 超过 3.0秒 ---
+            elif elapsed >= 8.05:
+                print("✅ 连招结束，切回手动模式")
+                self.is_auto_running = False 
+                # 如果希望结束后立刻停止移动，取消下面这行的注释
+                # self.vx, self.vy, self.w = 0.0, 0.0, 0.0
+
+       
+        else:
+            self.vx, self.vy, self.w = 0.0, 0.0, 0.0
+            
+            # 运动控制
+            if keys[KEY_CONFIG['FORWARD']]:  self.vy = 1.0
+            if keys[KEY_CONFIG['BACKWARD']]: self.vy = -1.0
+            if keys[KEY_CONFIG['LEFT']]:     self.vx = -1.0
+            if keys[KEY_CONFIG['RIGHT']]:    self.vx = 1.0
+            if keys[KEY_CONFIG['TURN_L']]:   self.w = 1.0
+            if keys[KEY_CONFIG['TURN_R']]:   self.w = -1.0
+
+            # 导轨控制 (手动)
+            if keys[KEY_CONFIG['F_UP']]:   self.rail_pos_front -= RAIL_SPEED
+            if keys[KEY_CONFIG['F_DOWN']]: self.rail_pos_front += RAIL_SPEED
+            
+            if keys[pygame.K_LSHIFT] or keys[pygame.K_RSHIFT]: self.rail_pos_rear -= RAIL_SPEED
+            if keys[KEY_CONFIG['R_DOWN']]: self.rail_pos_rear += RAIL_SPEED
+
+        
+        
+        # 1. 速度限制 (Turbo模式)
+        if keys[KEY_CONFIG['TURBO']]:
+            self.current_max_speed = TURBO_SPEED
+        else:
+            self.current_max_speed = NORMAL_SPEED
+
+        # 2. 物理限位 (防止超出导轨行程)
+        # 这一步非常重要，它保证了自动模式下即使一直在加，也不会超出 max
+        self.rail_pos_front = float(np.clip(self.rail_pos_front, RAIL_MIN, RAIL_MAX))
+        self.rail_pos_rear  = float(np.clip(self.rail_pos_rear,  RAIL_MIN, RAIL_MAX))
+
+        # 3. 将计算好的位置应用到电机目标
+        self.rail_targets['front_left']  = self.rail_pos_front
+        self.rail_targets['front_right'] = self.rail_pos_front
+        self.rail_targets['rear_left']   = self.rail_pos_rear
+        self.rail_targets['rear_right']  = self.rail_pos_rear
 
 def main():
     stop_requested = False
